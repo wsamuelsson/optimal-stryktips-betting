@@ -8,6 +8,9 @@
 
 #define SAMPLE_SPACE_SIZE  1594323
 #define READ_NUMBER SAMPLE_SPACE_SIZE
+#define ALPHA 0.95            // Cooling rate
+#define T_INIT 100.0          // Initial temperature
+#define T_MIN 1e-3            // Minimum temperature
 
 #ifndef BETS_H
 #define BETS_H
@@ -27,24 +30,149 @@ typedef struct {
 
 
 void print_odds_and_probs(odds_t *odds, probs_t *probs, int NUM_GAMES);
-inline void generate_random_pick(int *pick, double *picking_probs, int NUM_GAMES);
 static inline double get_implied_prob(int *pick, double *implied_prob, int NUM_GAMES);
 inline double get_picking_prob(int *pick, double *picking_probs, int NUM_GAMES);
 int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES);
 double compute_likliehood(int *x, int s, double *picking_probs, double result_lilkliehood[], int NUM_GAMES);
 inline void compute_conditional_expectation(double *EV_cond, int *x, int *y, double *result_likliehood, int POOL_SIZE, int NUM_GAMES);
-inline void compute_expected_value(double *EV, int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES);
+inline double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES);
 void print_loading_bar(int current, int total, const char *label, int finalize);
 
 
+double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
+                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size){
 
-void compute_expected_value(double *EV, int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES){
-    *EV = 0.0;
+    double best_EV;
+    double EV;
+    best_EV = compute_expected_value(y, sample_space, pobin_lut,picking_probs, implied_probs, pool_size, num_games);
+    
+    if(rank==0)
+        printf("Starting MCMC on %d chains. Running %d (%d burn-in phase + %d sample phase) samples\n", size, size*(burnin_iters+sample_iters), size*burnin_iters, size*sample_iters);
+    
+    
+    double alpha; 
+    for(int i=0;i<burnin_iters;i++){
+
+        //Generate propasal y from uniform distribution
+        for(int j=0; j<num_games;j++)
+            y[j] = rand() % 3;
+        
+        //Compute EV
+        EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        alpha = (double)rand() / (RAND_MAX + 1.0);
+        if(EV > best_EV){
+            best_EV = EV;
+            memcpy(best_y, y, num_games*sizeof(int));
+        }
+        else if(alpha > EV/best_EV){
+            best_EV = EV;
+            memcpy(best_y, y, num_games*sizeof(int));
+        }
+        if(rank==0)
+            print_loading_bar(i + 1, burnin_iters, "Burn-in phase", i + 1 == burnin_iters);
+    }
+
+    for(int i=0;i<sample_iters;i++){
+
+        //Generate propasal y from uniform distribution
+        for(int j=0; j<num_games;j++)
+            y[j] = rand() % 3;
+        
+        //Compute EV
+        EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        alpha = (double)rand() / (RAND_MAX + 1.0);
+        if(EV > best_EV){
+            best_EV = EV;
+            memcpy(best_y, y, num_games*sizeof(int));
+        }
+        else if(alpha > EV/best_EV){
+            best_EV = EV;
+            memcpy(best_y, y, num_games*sizeof(int));
+        }
+        if(rank==0)
+            print_loading_bar(i + 1, sample_iters, "Sample phase", i + 1 == sample_iters);
+    }
+    
+    return best_EV;
+}
+
+
+double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
+                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size) {
+
+    double best_EV, new_EV;
+    double temperature = T_INIT;
+    double alpha;
+    
+    best_EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+    memcpy(best_y, y, num_games * sizeof(int));
+
+    if (rank == 0) {
+        printf("Starting Simulated Annealing on %d chains. Running %d iterations (%d burn-in, %d sample phase)\n", 
+               size, size * (burnin_iters + sample_iters), size * burnin_iters, size * sample_iters);
+    }
+
+    // BURN-IN PHASE
+    for (int i = 0; i < burnin_iters; i++) {
+        // Generate proposal y from a uniform distribution
+        int proposal[num_games];
+        for (int j = 0; j < num_games; j++)
+            proposal[j] = rand() % 3;
+
+        // Compute EV
+        new_EV = compute_expected_value(proposal, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        alpha = (double)rand() / RAND_MAX;
+
+        // Metropolis criterion for maximization
+        if (new_EV > best_EV || alpha < exp((new_EV - best_EV) / temperature)) {
+            best_EV = new_EV;
+            memcpy(y, proposal, num_games * sizeof(int));
+            memcpy(best_y, y, num_games * sizeof(int));
+        }
+
+        // Cooling schedule update
+        temperature *= ALPHA;
+        if (temperature < T_MIN) temperature = T_MIN;
+
+        if (rank == 0)
+            print_loading_bar(i + 1, burnin_iters, "Burn-in phase", i + 1 == burnin_iters);
+    }
+
+    // SAMPLE PHASE
+    for (int i = 0; i < sample_iters; i++) {
+        // Generate proposal y
+        int proposal[num_games];
+        for (int j = 0; j < num_games; j++)
+            proposal[j] = rand() % 3;
+
+        // Compute EV
+        new_EV = compute_expected_value(proposal, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        alpha = (double)rand() / RAND_MAX;
+
+        // Metropolis criterion for maximization
+        if (new_EV > best_EV || alpha < exp((new_EV - best_EV) / temperature)) {
+            best_EV = new_EV;
+            memcpy(y, proposal, num_games * sizeof(int));
+            memcpy(best_y, y, num_games * sizeof(int));
+        }
+
+        // Cooling schedule update
+        temperature *= ALPHA;
+        if (temperature < T_MIN) temperature = T_MIN;
+
+        if (rank == 0)
+            print_loading_bar(i + 1, sample_iters, "Sample phase", i + 1 == sample_iters);
+    }
+    return best_EV;
+}
+ 
+
+double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES){
     double conditional_E = 0.0;
     int *x;
     double implied_prob_x;
     double a = 1.0/SAMPLE_SPACE_SIZE;
-
+    double EV = 0.0;
     
     double *result_likliehood;
     for(int i = 0; i < READ_NUMBER;i++){
@@ -58,11 +186,11 @@ void compute_expected_value(double *EV, int *y, int* sample_space, double *pobin
         //Compute A(X)
         implied_prob_x = get_implied_prob(x, implied_probs, NUM_GAMES);
         //E(Y) = sum_x A(X) * E(Y|X)
-        *EV += (a*conditional_E*implied_prob_x);
+        EV += (a*conditional_E*implied_prob_x);
         
         
     }
-    return;
+    return EV;
 }
 
 double compute_likliehood(int *x, int s, double *picking_probs, double result_likliehood[], const int NUM_GAMES){

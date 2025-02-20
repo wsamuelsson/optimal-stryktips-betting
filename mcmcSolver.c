@@ -7,6 +7,10 @@
 #include"mcmcSolver.h"
 #include<mpi.h>
 
+
+
+
+
 int main(int argc, char **argv){
 
     MPI_Init(&argc, &argv);
@@ -78,7 +82,9 @@ int main(int argc, char **argv){
     //Read in the PoBin LUT
     FILE * file_pobin = fopen("PoBinLUT.bin", "rb");
     double *pobin_lut = (double *)malloc(sizeof(double)*SAMPLE_SPACE_SIZE*(NUM_GAMES+1));
-    fread(pobin_lut, sizeof(double), SAMPLE_SPACE_SIZE*(NUM_GAMES+1), file_pobin);
+    size_t read_bytes = fread(pobin_lut, sizeof(double), SAMPLE_SPACE_SIZE*(NUM_GAMES+1), file_pobin);
+    assert(read_bytes);
+    
     fclose(file_pobin);
 
     int BURNIN_ITERS = 1000;
@@ -92,56 +98,13 @@ int main(int argc, char **argv){
     int best_y[NUM_GAMES];
     memcpy(best_y, y, NUM_GAMES*sizeof(int));
 
-    double best_EV;
-    double EV;
-    compute_expected_value(&best_EV, y, sample_space, pobin_lut,picking_probs, implied_probs, POOL_SIZE, NUM_GAMES);
-    if(rank==0)
-        printf("Starting MCMC on %d chains. Running %d (%d burn-in phase + %d sample phase) samples\n", size, size*(BURNIN_ITERS+SAMPLE_ITERS), size*BURNIN_ITERS, size*SAMPLE_ITERS);
-    double alpha; 
-    for(int i=0;i<BURNIN_ITERS;i++){
-
-        //Generate propasal y from uniform distribution
-        for(int j=0; j<NUM_GAMES;j++)
-            y[j] = rand() % 3;
-        
-        //Compute EV
-        compute_expected_value(&EV, y, sample_space, pobin_lut, picking_probs, implied_probs, POOL_SIZE, NUM_GAMES);
-        alpha = (double)rand() / (RAND_MAX + 1.0);
-        if(EV > best_EV){
-            best_EV = EV;
-            memcpy(best_y, y, NUM_GAMES*sizeof(int));
-        }
-        else if(alpha < EV/best_EV){
-            best_EV = EV;
-            memcpy(best_y, y, NUM_GAMES*sizeof(int));
-        }
-        if(rank==0)
-            print_loading_bar(i + 1, BURNIN_ITERS, "Burn-in phase", i + 1 == BURNIN_ITERS);
-    }
-
-    for(int i=0;i<SAMPLE_ITERS;i++){
-
-        //Generate propasal y from uniform distribution
-        for(int j=0; j<NUM_GAMES;j++)
-            y[j] = rand() % 3;
-        
-        //Compute EV
-        compute_expected_value(&EV, y, sample_space, pobin_lut, picking_probs, implied_probs, POOL_SIZE, NUM_GAMES);
-        alpha = (double)rand() / (RAND_MAX + 1.0);
-        if(EV > best_EV){
-            best_EV = EV;
-            memcpy(best_y, y, NUM_GAMES*sizeof(int));
-        }
-        else if(alpha < EV/best_EV){
-            best_EV = EV;
-            memcpy(best_y, y, NUM_GAMES*sizeof(int));
-        }
-        if(rank==0)
-            print_loading_bar(i + 1, SAMPLE_ITERS, "Sample phase", i + 1 == SAMPLE_ITERS);
-    }
-    
     MPI_Barrier(MPI_COMM_WORLD);
 
+    double best_EV = simulated_annealing(&y[0], &best_y[0], &sample_space[0], &pobin_lut[0], &picking_probs[0], 
+    &implied_probs[0], POOL_SIZE, NUM_GAMES, BURNIN_ITERS, SAMPLE_ITERS, rank, size);
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    
     printf("Best Prediction from core %d with EV=%lf\n", rank, best_EV);
     //Print best pick
     for(int i=0;i<NUM_GAMES;i++)
