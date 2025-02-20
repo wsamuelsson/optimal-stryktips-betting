@@ -156,7 +156,7 @@ double get_picking_prob(int *pick, double *picking_probs_log, int NUM_GAMES){
 int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES){
     int overlap = 0;
     for(int i=0; i<NUM_GAMES;i++) {
-        overlap += (pick_a[i] == pick_b[i]); //If equal +1 else +0;
+        overlap += (int)(pick_a[i] == pick_b[i]); //If equal +1 else +0;
     }
     return overlap;
 }
