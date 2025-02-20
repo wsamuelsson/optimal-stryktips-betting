@@ -81,23 +81,47 @@ double compute_likliehood(int *x, int s, double *picking_probs, double result_li
     return 0.0;
 }
 
+float compute_conditional_payoff(int *other_winners, int score, int total_turnover){
+    double Q = 0.0;
+    assert(score >= 0);
+    switch (score) {
+        case 13:
+            Q = 0.4;
+            break;
+        case 12:
+            Q = 0.24;
+            break;
+        case 11:
+            Q = 0.20;
+            break;
+        case 10:
+            Q = 0.16;
+            break;
+        default:
+            return 0.0;
+    }
+
+    return Q * total_turnover / (other_winners[score] + 1);
+}
+
 void compute_conditional_expectation(double * EV_cond, int *x, int *y, double *result_likliehood, int POOL_SIZE, int NUM_GAMES){
     
-    int s = check_overlap(x, y, NUM_GAMES);
-    
-    //Compute probability that someone scores equal to s
-    double p_equal = result_likliehood[s];
-    //Compute probability that someone scores less than s 
-    double p_less = 0.0;
-    for(int i = 0; i < s;i++)
-        p_less += result_likliehood[i];
-   
+    int score = check_overlap(x, y, NUM_GAMES);
+    //We just need to compute probabiliteis that opponents score: 13, 12, 11, 10 -> p_score*pool_size gives proportion
 
-    //Return expected value according to Clair (use logs)
-    if(p_equal > 1.0e-9 && p_less > 1.0e-9){
-        *EV_cond =  ((POOL_SIZE+1)*log(p_less + p_equal) - (POOL_SIZE+1)*log(p_less))/log(p_equal);
-    }
-        return;
+    double p_13 = result_likliehood[13];
+    double p_12 = result_likliehood[12];
+    double p_11 = result_likliehood[11];
+    double p_10 = result_likliehood[10];
+
+    int other_winners[14] = {0};
+    other_winners[13]  = (int) (p_13 * POOL_SIZE);
+    other_winners[12]  = (int) (p_12 * POOL_SIZE);
+    other_winners[11]  = (int) (p_11 * POOL_SIZE);
+    other_winners[10]  = (int) (p_10 * POOL_SIZE);
+
+    *EV_cond = compute_conditional_payoff(&other_winners[0], score, POOL_SIZE);
+    return;
 }
 
 void print_odds_and_probs(odds_t *odds, probs_t *probs, int NUM_GAMES){
