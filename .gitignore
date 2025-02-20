@@ -1,0 +1,34 @@
+# Object files
+*.o
+*.obj
+
+# Executables
+a.out
+a.exe
+*.out
+*.exe
+
+# Shared and static libraries
+*.so
+*.dylib
+*.dll
+*.lib
+*.a
+
+# Debugging and profiler output
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+
+# Build directories (if using common build systems)
+build/
+bin/
+lib/
+
+# Editor and OS-specific files (optional but useful)
+*.swp
+*.swo
+*~
+Thumbs.db
+.DS_Store
