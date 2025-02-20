@@ -1,6 +1,7 @@
 # Object files
 *.o
 *.obj
+*.bin
 
 # Executables
 a.out
