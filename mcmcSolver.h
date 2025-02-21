@@ -31,9 +31,7 @@ typedef struct {
 
 void print_odds_and_probs(odds_t *odds, probs_t *probs, int NUM_GAMES);
 static inline double get_implied_prob(int *pick, double *implied_prob, int NUM_GAMES);
-inline double get_picking_prob(int *pick, double *picking_probs, int NUM_GAMES);
 int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES);
-double compute_likliehood(int *x, int s, double *picking_probs, double result_lilkliehood[], int NUM_GAMES);
 inline void compute_conditional_expectation(double *EV_cond, int *x, int *y, double *result_likliehood, int POOL_SIZE, int NUM_GAMES);
 inline double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES);
 void print_loading_bar(int current, int total, const char *label, int finalize);
@@ -171,7 +169,6 @@ double compute_expected_value(int *y, int* sample_space, double *pobin_lut, doub
     double conditional_E = 0.0;
     int *x;
     double implied_prob_x;
-    double a = 1.0/SAMPLE_SPACE_SIZE;
     double EV = 0.0;
     
     double *result_likliehood;
@@ -186,32 +183,24 @@ double compute_expected_value(int *y, int* sample_space, double *pobin_lut, doub
         //Compute A(X)
         implied_prob_x = get_implied_prob(x, implied_probs, NUM_GAMES);
         //E(Y) = sum_x A(X) * E(Y|X)
-        EV += (a*conditional_E*implied_prob_x);
-        
-        
+        EV += (conditional_E*implied_prob_x);
+      
     }
     return EV;
 }
 
-double compute_likliehood(int *x, int s, double *picking_probs, double result_likliehood[], const int NUM_GAMES){
-    double ps[NUM_GAMES];
-    for(int i=0;i < NUM_GAMES;i++){
-        ps[i] = picking_probs[3*i + x[i]];
-    }
 
-    
-    int number_splits = 4;
-    int p_vec_len = NUM_GAMES;
-    
-    //Compute PoBin probability mass
-    tree_convolution(ps, &p_vec_len, &number_splits, result_likliehood);
-    
-    return 0.0;
-}
 
 float compute_conditional_payoff(int *other_winners, int score, int total_turnover){
     double Q = 0.0;
     assert(score >= 0);
+
+    //Sole winner - Jackpott !!!
+    if((score == 13) && (other_winners[13] == 0)){
+        return (int)10e6;
+    }
+
+
     switch (score) {
         case 13:
             Q = 0.4;
@@ -263,23 +252,14 @@ void print_odds_and_probs(odds_t *odds, probs_t *probs, int NUM_GAMES){
 
 
 double get_implied_prob(int *pick, double *implied_prob, int NUM_GAMES){
-    double implied_prob_sum = 1.0;
+    double p = 1.0;
     for(int i=0; i<NUM_GAMES; i++){
-        implied_prob_sum += implied_prob[pick[i] + 3*i];
+        p *= 1.0/implied_prob[pick[i] + 3*i];
         
     }
-    return implied_prob_sum;
+    return p;
 }
 
-double get_picking_prob(int *pick, double *picking_probs_log, int NUM_GAMES){
-    double picking_probs_sum = 0.0;
-    for(int i=0;i<NUM_GAMES;i++){
-        picking_probs_sum +=  picking_probs_log[pick[i] + 3*i];
-        
-    }
-    
-    return picking_probs_sum;
-}
 
 int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES){
     int overlap = 0;

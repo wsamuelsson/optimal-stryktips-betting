@@ -18,12 +18,18 @@ int main(int argc, char **argv){
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    if (rank == 0) {
+        printf("------------------------------------------------\n");
+        printf("WELCOME TO THE SIMULATION\n");
+        printf("------------------------------------------------\n");
+        
+    }
 
 
     srand(rank);
     const int NUM_GAMES = 13;
     int num_obj_read;
-    const int POOL_SIZE = (int)1e5;
+    const int POOL_SIZE = (int)2e6;
     FILE *file_odds;
     FILE *file_probs;
 
@@ -97,18 +103,65 @@ int main(int argc, char **argv){
     
     int best_y[NUM_GAMES];
     memcpy(best_y, y, NUM_GAMES*sizeof(int));
-
+    
     MPI_Barrier(MPI_COMM_WORLD);
 
     double best_EV = simulated_annealing(&y[0], &best_y[0], &sample_space[0], &pobin_lut[0], &picking_probs[0], 
     &implied_probs[0], POOL_SIZE, NUM_GAMES, BURNIN_ITERS, SAMPLE_ITERS, rank, size);
     
     MPI_Barrier(MPI_COMM_WORLD);
+    double *all_EV = NULL;
+
+    if (rank == 0) {
+        all_EV = (double *)malloc(size * sizeof(double)); // Buffer to gather all EV values
+    }
+
+    // Gather all best_EV values from each rank into all_EV on rank 0
+    MPI_Gather(&best_EV, 1, MPI_DOUBLE, all_EV, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
     
-    printf("Best Prediction from core %d with EV=%lf\n", rank, best_EV);
+    int best_rank = 0;
+    double global_best_EV = 0.0;
+
+    if (rank == 0) {
+        printf("------------------------------------------------\n");
+        global_best_EV = all_EV[0];
+        printf("EV from core 0: %lf\n", global_best_EV);
+        for (int i = 1; i < size; i++) {
+            printf("EV from core %i: %lf\n", i, all_EV[i]);
+            if (all_EV[i] > global_best_EV) {
+                global_best_EV = all_EV[i];
+                best_rank = i;
+            }
+        }
+        printf("------------------------------------------------\n");
+        free(all_EV);
+    }
+
+    // Broadcast the best rank to all processes
+    MPI_Bcast(&best_rank, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
+   
+
     //Print best pick
-    for(int i=0;i<NUM_GAMES;i++)
-        printf("Game %d: %d\n", i+1, best_y[i]);
+    if(rank == best_rank){
+        char signs[] = {'1', 'X', '2'};
+        // Print header with proper spacing
+        printf("Game   Pick  picking p (sweds)    Implied p (odds)\n");
+        printf("------------------------------------------------\n");
+
+        // Print values with aligned columns
+        for (int i = 0; i < NUM_GAMES; i++) {
+            printf("Game %2d: %c   %5.6lf    %17.6lf\n",
+                i + 1,
+                signs[best_y[i]],
+                picking_probs[3 * i + best_y[i]],
+                1.0 / implied_probs[3 * i + best_y[i]]);
+        }
+    printf("------------------------------------------------\n");
+    printf("EV=%lf \n", best_EV);
+    }
+   
     MPI_Finalize();
     free(sample_space);
     free(pobin_lut);
