@@ -8,7 +8,7 @@ a.out
 a.exe
 *.out
 *.exe
-
+mcmcSolver
 # Shared and static libraries
 *.so
 *.dylib

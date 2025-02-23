@@ -7,10 +7,7 @@
 #include<assert.h>
 
 
-#define SAMPLE_SPACE_SIZE  1594323
-#define NUM_GAMES 13
-
-void compute_likliehood(int *x, const double *picking_probs, double result_likliehood[]);
+void compute_likliehood(int *x, const double *picking_probs, int num_games, double result_likliehood[]);
 
 
 typedef struct {
@@ -22,11 +19,30 @@ typedef struct {
 
 int main(int argc, char const *argv[])
 {
-    const char *filename_sample_space = "PossibleBets.bin";
-    const char *filename_pobin_lut = "PoBinLUT.bin";
+    const char *filename_sample_space = "data/PossibleBets.bin";
+    const char *filename_pobin_lut = "data/PoBinLUT.bin";
+    const char *filename_num_games = "data/num_games.bin";    
+    
 
-    int *sample_space = (int *)malloc(sizeof(int)*SAMPLE_SPACE_SIZE*NUM_GAMES);
-    double *pobin_lut = (double *)malloc(sizeof(double)*SAMPLE_SPACE_SIZE*(NUM_GAMES+1));
+    FILE *file_num_games;
+    
+
+    int num_games, num_obj_read;
+
+    //Read number of games
+    file_num_games = fopen(filename_num_games, "rb");
+    num_obj_read   = fread(&num_games, sizeof(int), 1, file_num_games);
+    fclose(file_num_games);
+    if(num_obj_read != 1){
+        printf("Something went wrong reading num games. \n");
+        return -1;
+    }
+
+    const int sample_space_size = pow(3, num_games);
+
+
+    int *sample_space = (int *)malloc(sizeof(int)*sample_space_size*num_games);
+    double *pobin_lut = (double *)malloc(sizeof(double)*sample_space_size*(num_games+1));
     
     
     FILE * file_sample_space = fopen(filename_sample_space, "rb");
@@ -37,9 +53,9 @@ int main(int argc, char const *argv[])
     }
     
     //Read in possible bets
-    int bytesRead = fread(&sample_space[0], sizeof(int), SAMPLE_SPACE_SIZE * NUM_GAMES, file_sample_space);
+    int bytesRead = fread(&sample_space[0], sizeof(int), sample_space_size * num_games, file_sample_space);
     
-    if(bytesRead != (SAMPLE_SPACE_SIZE*NUM_GAMES)){
+    if(bytesRead != (sample_space_size*num_games)){
         perror("Error reading\n");
         return 1;
     }
@@ -48,33 +64,33 @@ int main(int argc, char const *argv[])
         return 1;
     }
     
-    double picking_probs[3*NUM_GAMES];
+    double picking_probs[3*num_games];
     
 
     // Read probs
-    probs_t probs[NUM_GAMES];
+    probs_t probs[num_games];
     FILE * file_probs = fopen("probs.bin", "rb");
-    int num_obj_read = fread(probs, sizeof(probs_t), NUM_GAMES, file_probs);
+    num_obj_read = fread(probs, sizeof(probs_t), num_games, file_probs);
     fclose(file_probs);
-    if (num_obj_read != NUM_GAMES){
+    if (num_obj_read != num_games){
         printf("Something went wrong reading probs.\n");
         return -1;
     }
-    memcpy(&picking_probs[0], &probs[0], NUM_GAMES*3*sizeof(double));    
+    memcpy(&picking_probs[0], &probs[0], num_games*3*sizeof(double));    
     int *x;
-    double result_likliehood[NUM_GAMES+1];
-    double ps_arg[NUM_GAMES*3];
-    memcpy(&ps_arg[0], &picking_probs[0], NUM_GAMES*3*sizeof(double));
+    double result_likliehood[num_games+1];
+    double ps_arg[num_games*3];
+    memcpy(&ps_arg[0], &picking_probs[0], num_games*3*sizeof(double));
     
-    for(int i=0; i<SAMPLE_SPACE_SIZE;i++){
-        x = &sample_space[i*NUM_GAMES];
+    for(int i=0; i<sample_space_size;i++){
+        x = &sample_space[i*num_games];
         
-        compute_likliehood(&x[0], &ps_arg[0], result_likliehood);
+        compute_likliehood(&x[0], &ps_arg[0], num_games,result_likliehood);
         
-        memcpy(&pobin_lut[i*NUM_GAMES], result_likliehood, (NUM_GAMES+1)*sizeof(double));
+        memcpy(&pobin_lut[i*num_games], result_likliehood, (num_games+1)*sizeof(double));
         if(i==0){
             
-            for(int j=0;j<NUM_GAMES;j++){
+            for(int j=0;j<num_games;j++){
                 printf("Game %d: %lf, index=%d\n", j+1, ps_arg[x[j] + j*3], x[j]+j*3);
             }
         }
@@ -90,10 +106,10 @@ int main(int argc, char const *argv[])
     }
 
     // Attempt to write the lookup table to the file
-    size_t items_written = fwrite(pobin_lut, sizeof(double), (NUM_GAMES + 1) * SAMPLE_SPACE_SIZE, f_write);
+    size_t items_written = fwrite(pobin_lut, sizeof(double), (num_games + 1) * sample_space_size, f_write);
 
     // Check if the correct number of items were written
-    if (items_written != (NUM_GAMES + 1) * SAMPLE_SPACE_SIZE) {
+    if (items_written != (num_games + 1) * sample_space_size) {
         fprintf(stderr, "Error writing to file %s\n", filename_pobin_lut);
         fclose(f_write); // Close the file before returning
         return 1; // Return an error code
@@ -109,24 +125,24 @@ int main(int argc, char const *argv[])
     return 0;
 }
 
-void compute_likliehood(int *x, const double *picking_probs, double result_likliehood[]){
-    double ps[NUM_GAMES];
-    for(int i=0;i < NUM_GAMES;i++){
+void compute_likliehood(int *x, const double *picking_probs, int num_games, double result_likliehood[]){
+    double ps[num_games];
+    for(int i=0;i < num_games;i++){
         ps[i] = picking_probs[3*i + x[i]];
     }
     
-    double ps_arg[NUM_GAMES];
-    memcpy(ps_arg, ps, NUM_GAMES*sizeof(double));
+    double ps_arg[num_games];
+    memcpy(ps_arg, ps, num_games*sizeof(double));
     
     int number_splits = 4;
-    int p_vec_len = NUM_GAMES;
+    int p_vec_len = num_games;
     
     //Compute PoBin probability mass
     
     tree_convolution(ps_arg, &p_vec_len, &number_splits, result_likliehood);
     
     double psum = 0.0;
-    for(int i = 0; i < NUM_GAMES+1;i++)
+    for(int i = 0; i < num_games+1;i++)
         psum += result_likliehood[i];
     
     double diff = fabs(psum - 1.0);

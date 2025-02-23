@@ -6,8 +6,7 @@
 #include"pobinfft.h"
 #include<assert.h>
 
-#define SAMPLE_SPACE_SIZE  1594323
-#define READ_NUMBER SAMPLE_SPACE_SIZE
+
 #define ALPHA 0.95            // Cooling rate
 #define T_INIT 100.0          // Initial temperature
 #define T_MIN 1e-3            // Minimum temperature
@@ -28,21 +27,25 @@ typedef struct {
     double away_prob;
 } probs_t;
 
+double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
+                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size, int total_turnover, int jackpot);
 
-void print_odds_and_probs(odds_t *odds, probs_t *probs, int NUM_GAMES);
-static inline double get_implied_prob(int *pick, double *implied_prob, int NUM_GAMES);
-int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES);
-inline void compute_conditional_expectation(double *EV_cond, int *x, int *y, double *result_likliehood, int POOL_SIZE, int NUM_GAMES);
-inline double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES);
+double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
+                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size, int total_turnover, int jackpot);
+void print_odds_and_probs(odds_t *odds, probs_t *probs, int num_games);
+static inline double get_implied_prob(int *pick, double *implied_prob, int num_games);
+int check_overlap(int *pick_a, int *pick_b, int num_games);
+inline double compute_conditional_expectation(int *x, int *y, double *result_likliehood, int pool_size, int num_games, int total_turnover, int jackpot);
+inline double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int pool_size, int num_games, int total_turnover, int jackpot);
 void print_loading_bar(int current, int total, const char *label, int finalize);
 
 
 double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
-                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size){
+                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size, int total_turnover, int jackpot){
 
     double best_EV;
     double EV;
-    best_EV = compute_expected_value(y, sample_space, pobin_lut,picking_probs, implied_probs, pool_size, num_games);
+    best_EV = compute_expected_value(y, sample_space, pobin_lut,picking_probs, implied_probs, pool_size, num_games, total_turnover, jackpot);
     
     if(rank==0)
         printf("Starting MCMC on %d chains. Running %d (%d burn-in phase + %d sample phase) samples\n", size, size*(burnin_iters+sample_iters), size*burnin_iters, size*sample_iters);
@@ -56,7 +59,7 @@ double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_
             y[j] = rand() % 3;
         
         //Compute EV
-        EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games, total_turnover, jackpot);
         alpha = (double)rand() / (RAND_MAX + 1.0);
         if(EV > best_EV){
             best_EV = EV;
@@ -77,7 +80,7 @@ double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_
             y[j] = rand() % 3;
         
         //Compute EV
-        EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games, total_turnover, jackpot);
         alpha = (double)rand() / (RAND_MAX + 1.0);
         if(EV > best_EV){
             best_EV = EV;
@@ -96,13 +99,13 @@ double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_
 
 
 double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
-                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size) {
-
+                         double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size, int total_turnover, int jackpot) {
+                            
     double best_EV, new_EV;
     double temperature = T_INIT;
     double alpha;
     
-    best_EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+    best_EV = compute_expected_value(y, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games, total_turnover, jackpot);
     memcpy(best_y, y, num_games * sizeof(int));
 
     if (rank == 0) {
@@ -118,7 +121,7 @@ double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin
             proposal[j] = rand() % 3;
 
         // Compute EV
-        new_EV = compute_expected_value(proposal, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        new_EV = compute_expected_value(proposal, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games, total_turnover, jackpot);
         alpha = (double)rand() / RAND_MAX;
 
         // Metropolis criterion for maximization
@@ -144,7 +147,7 @@ double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin
             proposal[j] = rand() % 3;
 
         // Compute EV
-        new_EV = compute_expected_value(proposal, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games);
+        new_EV = compute_expected_value(proposal, sample_space, pobin_lut, picking_probs, implied_probs, pool_size, num_games, total_turnover, jackpot);
         alpha = (double)rand() / RAND_MAX;
 
         // Metropolis criterion for maximization
@@ -165,25 +168,26 @@ double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin
 }
  
 
-double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int POOL_SIZE, int NUM_GAMES){
-    double conditional_E = 0.0;
+double compute_expected_value(int *y, int* sample_space, double *pobin_lut, double *picking_probs, double *implied_probs, int pool_size, int num_games, int total_turnover, int jackpot){
+    double EV_cond = 0.0;
     int *x;
     double implied_prob_x;
     double EV = 0.0;
-    
+    const int sample_space_size = pow(3,num_games);
     double *result_likliehood;
-    for(int i = 0; i < READ_NUMBER;i++){
+
+    for(int i = 0; i < sample_space_size;i++){
         //Read the bet 
-        x = &sample_space[i*13];
+        x = &sample_space[i*num_games];
         
         //Read the likliehoods fom LUT
-        result_likliehood = &pobin_lut[i*(NUM_GAMES)];
+        result_likliehood = &pobin_lut[i*(num_games)];
         //Compute E(Y|X)
-        compute_conditional_expectation(&conditional_E, x, y, result_likliehood, POOL_SIZE, NUM_GAMES);
+        EV_cond = compute_conditional_expectation(x, y, result_likliehood, pool_size, num_games, total_turnover, jackpot);
         //Compute A(X)
-        implied_prob_x = get_implied_prob(x, implied_probs, NUM_GAMES);
+        implied_prob_x = get_implied_prob(x, implied_probs, num_games);
         //E(Y) = sum_x A(X) * E(Y|X)
-        EV += (conditional_E*implied_prob_x);
+        EV += (EV_cond*implied_prob_x);
       
     }
     return EV;
@@ -191,69 +195,84 @@ double compute_expected_value(int *y, int* sample_space, double *pobin_lut, doub
 
 
 
-float compute_conditional_payoff(int *other_winners, int score, int total_turnover){
+double compute_conditional_payoff(int *other_winners, int score, int num_games, int total_turnover, int jackpot){
     double Q = 0.0;
     assert(score >= 0);
 
-    //Sole winner - Jackpott !!!
-    if((score == 13) && (other_winners[13] == 0)){
-        return (int)10e6;
+    if(num_games == 13){
+        //Sole winner - Jackpott !!!
+        if((score == num_games) && (other_winners[num_games] == 0)){
+            return jackpot;
+        }
+        switch (score) {
+            case 13:
+                Q = 0.4;
+                break;
+            case 12:
+                Q = 0.24;
+                break;
+            case 11:
+                Q = 0.20;
+                break;
+            case 10:
+                Q = 0.16;
+                break;
+            default:
+                return 0.0;
+        }
     }
 
-
-    switch (score) {
-        case 13:
-            Q = 0.4;
-            break;
-        case 12:
-            Q = 0.24;
-            break;
-        case 11:
-            Q = 0.20;
-            break;
-        case 10:
-            Q = 0.16;
-            break;
-        default:
-            return 0.0;
+    if(num_games == 8){
+        if (score == 8)
+        {
+            Q = 0.7;
+        }
+        
     }
+
 
     return Q * total_turnover / (other_winners[score] + 1);
 }
 
-void compute_conditional_expectation(double * EV_cond, int *x, int *y, double *result_likliehood, int POOL_SIZE, int NUM_GAMES){
+double compute_conditional_expectation(int *x, int *y, double *result_likliehood, int pool_size, int num_games, int total_turnover, int jackpot){
     
-    int score = check_overlap(x, y, NUM_GAMES);
+    int score = check_overlap(x, y, num_games);
     //We just need to compute probabiliteis that opponents score: 13, 12, 11, 10 -> p_score*pool_size gives proportion
 
     double p_13 = result_likliehood[13];
     double p_12 = result_likliehood[12];
     double p_11 = result_likliehood[11];
     double p_10 = result_likliehood[10];
-
+    double p_8  = result_likliehood[8];
+    
+    
     int other_winners[14] = {0};
-    other_winners[13]  = (int) (p_13 * POOL_SIZE);
-    other_winners[12]  = (int) (p_12 * POOL_SIZE);
-    other_winners[11]  = (int) (p_11 * POOL_SIZE);
-    other_winners[10]  = (int) (p_10 * POOL_SIZE);
+    other_winners[13]  = (int) (p_13 * pool_size);
+    other_winners[12]  = (int) (p_12 * pool_size);
+    other_winners[11]  = (int) (p_11 * pool_size);
+    other_winners[10]  = (int) (p_10 * pool_size);
 
-    *EV_cond = compute_conditional_payoff(&other_winners[0], score, POOL_SIZE);
-    return;
+    if(num_games == 8)
+        other_winners[8] = (int) (p_8 * pool_size);
+    
+    double EV_cond = compute_conditional_payoff(&other_winners[0], score,  num_games, total_turnover, jackpot);
+    
+    return EV_cond;
 }
 
-void print_odds_and_probs(odds_t *odds, probs_t *probs, int NUM_GAMES){
-    for(int i = 0; i < NUM_GAMES;i++){
+void print_odds_and_probs(odds_t *odds, probs_t *probs, int num_games){
+    for(int i = 0; i < num_games;i++){
         printf("Game %d\nH:%f\nD:%f\nA:%f\n", i+1, probs[i].home_prob, probs[i].draw_prob, probs[i].away_prob);
     }
-    for(int i = 0; i < NUM_GAMES;i++){
+    for(int i = 0; i < num_games;i++){
         printf("Game %d\nH:%f\nD:%f\nA:%f\n", i+1, odds[i].home_odds, odds[i].draw_odds, odds[i].away_odds);
     }
 }
 
 
-double get_implied_prob(int *pick, double *implied_prob, int NUM_GAMES){
+double get_implied_prob(int *pick, double *implied_prob, int num_games){
     double p = 1.0;
-    for(int i=0; i<NUM_GAMES; i++){
+    for(int i=0; i<num_games; i++){
         p *= 1.0/implied_prob[pick[i] + 3*i];
         
     }
@@ -261,9 +280,9 @@ double get_implied_prob(int *pick, double *implied_prob, int NUM_GAMES){
 }
 
 
-int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES){
+int check_overlap(int *pick_a, int *pick_b, int num_games){
     int overlap = 0;
-    for(int i=0; i<NUM_GAMES;i++) {
+    for(int i=0; i<num_games;i++) {
         overlap += (int)(pick_a[i] == pick_b[i]); //If equal +1 else +0;
     }
     return overlap;
@@ -271,7 +290,7 @@ int check_overlap(int *pick_a, int *pick_b, int NUM_GAMES){
 
 void print_loading_bar(int current, int total, const char *label, int finalize) {
     int bar_width = 50;
-    float progress = (float)current / total;
+    double progress = (double)current / total;
     int pos = bar_width * progress;
 
     // Print the label with fixed width
