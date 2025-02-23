@@ -11,8 +11,8 @@
 #define T_INIT 100.0          // Initial temperature
 #define T_MIN 1e-3            // Minimum temperature
 
-#ifndef BETS_H
-#define BETS_H
+#ifndef _MCMC_SOLVER
+#define _MCMC_SOLVER
 
 typedef struct {
     double home_odds;
@@ -100,7 +100,7 @@ double metropolis_hasting(int *y, int *best_y, int *sample_space, double *pobin_
 
 double simulated_annealing(int *y, int *best_y, int *sample_space, double *pobin_lut, double *picking_probs, 
                          double *implied_probs, int pool_size, int num_games, int burnin_iters, int sample_iters, int rank, int size, int total_turnover, int jackpot) {
-                            
+
     double best_EV, new_EV;
     double temperature = T_INIT;
     double alpha;
