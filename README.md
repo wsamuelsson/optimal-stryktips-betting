@@ -21,6 +21,7 @@ This project requires:
   - On Debian/Ubuntu: `sudo apt install mpich`
 - Python 3.x
   - Selenium 
+
 You can check dependencies by running:
 
 ```bash
