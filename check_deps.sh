@@ -19,4 +19,7 @@ else
     exit 1
 fi
 
+#Check python dependencies
+python3 check_deps.py
+
 echo "All dependencies satisfied!"
