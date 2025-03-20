@@ -5,7 +5,7 @@ This implementation builds on the Clair, Letscher paper [1]. What is new in this
 - Efficient computation of conditional payoff using the binomial-poission distribution from [2]
 - Implementated realistic payoff
 - Inferring betting pool size via the Pareto distribution
-- Parallell implementation of a Simmulated annealing solver using Message Passing Interface (MPI) fram
+- Parallell implementation of a Simmulated annealing solver using Message Passing Interface (MPI)
 
 [1] Bryan Clair and David Letscher. "Optimal Strategies for Sports Betting Pools." *Operations Research*, vol. 55, no. 6, 2007, pp. 1163–1177. INFORMS. DOI: [10.1287/opre.1070.0424](https://doi.org/10.1287/opre.1070.0424).
 
