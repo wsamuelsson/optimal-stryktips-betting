@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e  # Exit if any command fails
-
+./check_deps.sh
 echo "========== Building binaries =========="
 make
 echo "Build completed."
