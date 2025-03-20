@@ -2,10 +2,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 import os
 from datetime import datetime
-import numpy as np
-import random
-import matplotlib.pyplot as plt
 
+import struct
 from array import array
 
 def is_file_empty(file_title):
@@ -13,30 +11,28 @@ def is_file_empty(file_title):
 
 def scrape_svenska_spel(tips_type: str):
     tips_type = tips_type.lower()
-    assert(tips_type in ['europatipset', 'stryktipset'])
+    assert(tips_type in ['europatipset', 'stryktipset', 'topptipset'])
     file_title = create_filename_with_date(tipstype=tips_type)
-    if file_title not in os.listdir():
-        url = f'https://spela.svenskaspel.se/{tips_type}'
-        driver = webdriver.Firefox()
 
-
-        driver.get(url)
-        #Accept cookies
-        driver.implicitly_wait(5)
-        try:
-            cookies_button = driver.find_element(by=By.CSS_SELECTOR,value='#onetrust-reject-all-handler')
-        except Exception:
-            cookies_button = driver.find_element(by=By.CSS_SELECTOR,value='#onetrust-accept-btn-handler')
-            
-        cookies_button.click()
-        driver.implicitly_wait(5)
-        main_elem = driver.find_element(by=By.ID, value="tipsen").text
-        driver.close()
-        betting_info = main_elem.split("\n")
-        write_to_file(info_list=betting_info, file_title=file_title)
     
-    else:
-        print(f"File {file_title} already exists!")
+    url = f'https://spela.svenskaspel.se/{tips_type}'
+    driver = webdriver.Firefox()
+    driver.minimize_window()
+
+    driver.get(url)
+    #Accept cookies
+    driver.implicitly_wait(1)
+    try:
+        cookies_button = driver.find_element(by=By.CSS_SELECTOR,value='#onetrust-reject-all-handler')
+    except Exception:
+        cookies_button = driver.find_element(by=By.CSS_SELECTOR,value='#onetrust-accept-btn-handler')
+        
+    cookies_button.click()
+    driver.implicitly_wait(5)
+    main_elem = driver.find_element(by=By.ID, value="tipsen").text
+    driver.close()
+    betting_info = main_elem.split("\n")
+    write_to_file(info_list=betting_info, file_title=file_title)
 
 def create_filename_with_date(tipstype:str):
     today_date = datetime.now().strftime("%Y%m%d")
@@ -60,9 +56,6 @@ def write_to_file(info_list, file_title):
 def read_betting_info(file_title):
     with open(file_title, 'r') as file:
         betting_info = file.readlines()
-
-    # Process the betting info as needed
-    # For example, you can strip newline characters and return the list
     betting_info_list = [line.strip() for line in betting_info]
 
     return betting_info_list
@@ -72,14 +65,9 @@ def read_betting_info(file_title):
 def extract_odds_and_probabilities(info_list):
     odds_dict = {}
     probabilities_dict = {}
-    
-    
     PIX_index = info_list.index("Fyll i med PIX!")
     spel_guide_index = info_list.index("Spelguide")    
     games_info = info_list[PIX_index+2:spel_guide_index]
-
-    
-    print(games_info)
     for counter, elem in enumerate(games_info):
         
         if elem == '-':
@@ -96,90 +84,49 @@ def extract_odds_and_probabilities(info_list):
             
     return odds_dict, probabilities_dict
 
-def simulate_games(odds):
-    possible_outcomes = [0,1,2]
-    odds = list(odds.values())
-    rad = 13*[0]
-    for game in range(13):
-        probs = [1/odds[game][i] for i in range(3)]
-        sigma = sum(probs) - 1
-        probs = [probs[i] - sigma/3 for i in range(3)] 
-        result = np.random.choice(possible_outcomes, 1, p=probs)[0]
-        rad[game] = result
-    return rad
+def get_total_turnover(betting_info):
+    for i, elem in enumerate(betting_info):
+        if elem.lower() == 'omsättning':
+            turnover_index = i+1
+    #Get numeric part
+    numeric_part = betting_info[turnover_index].split('kr')[0].strip()
+    #Remove spaces
+    turnover = ""
+    for integer in numeric_part:
+        if integer != " ":
+            turnover+=integer
+    return int(turnover)
+def get_games(betting_info:list, num_games=8):
+    pix_index = betting_info.index('Fyll i med PIX!')
+    spelguide_index = betting_info.index('Spelguide')
 
-def generate_pick(picking_probs, odds):
-    possible_picks = [0,1,2]
-    final_pick = [0]*13
-    actual_prob = 1
-    odds = list(odds.values())
-    for match_cc, picking_prob in enumerate(picking_probs.values()):
-        result = np.random.choice(possible_picks, 1, p=picking_prob)[0]
-        final_pick[match_cc] = result
-        actual_prob *= 1/odds[match_cc][result]
+    games = []
+
+    first_team_index  = pix_index + 2
+    second_team_index = first_team_index + 2
+
+    for team_index in range(2, spelguide_index-14, 15):
+        first_team_index = pix_index + team_index
+        second_team_index = first_team_index + 2
+
+        game = f"{betting_info[first_team_index]}-{betting_info[second_team_index]}"
+        games.append(game)
     
-    return final_pick, actual_prob
-
-def make_y_pick():
-    return [random.choice([0,1,2]) for _ in range(13)]
-
-def number_of_correct_picks(correct_rad: list, pick: list):
-    count = sum(x == y for x, y in zip(correct_rad, pick))
-    return count
-
-def estimate_EV(best_pick, pool, EV_samples=1000):
-    EV = 0
-    N = len(pool)
-    assert(len(best_pick) > 0 and len(pool) > 0)
-    random.seed(47)
-    for _ in range(EV_samples):
-        opp = random.randint(0, N-1)
-        pick = pool[opp]
-
-        prob = pick[1]
-        s = number_of_correct_picks(best_pick, pick[0])
-        e,l = E_L(s=s, pick=pick, pool=pool)
-        
-        try:
-            EV += prob * (l + np.power(e,(N+1), dtype=np.float64) - np.power(l,(N+1), dtype=np.float64))/e
-        except ZeroDivisionError and OverflowError:
-            print("Inf expected value:", best_pick)
-        
-    return N*EV/EV_samples       
-
-def simulate_pool_path(your_pick, pool):
-    pass
-def E_L(pick, s, pool, E_L_samples=1000):
-    import time 
-    E_x_s = 0
-    L_x_s = 0
-    t0 = time.perf_counter()
-    for pool_pick in pool:
-        prob = pool_pick[1]
-        rad = pool_pick[0]
-        correct_picks = number_of_correct_picks(correct_rad=pick[0], pick=rad)
-        if  correct_picks == s:    
-            E_x_s += prob
-        if correct_picks < s:
-            L_x_s += prob
-    t1 = time.perf_counter()
-    print(f"E_L took: {t1-t0}. E={E_x_s}, L={L_x_s}")        
-    return np.float64(E_x_s), np.float64(L_x_s)
-
-def compute_score_parallell(pick_and_correct_rad:tuple):
-    return number_of_correct_picks(correct_rad=pick_and_correct_rad[1], pick=pick_and_correct_rad[0])
-
+    return games 
+    
 def main():
-
-
-    
     tips_type = 'stryktipset'
     scrape_svenska_spel(tips_type=tips_type)
     file_title = create_filename_with_date(tipstype=tips_type)
     betting_info = read_betting_info(file_title=file_title)
+    total_turnover = get_total_turnover(betting_info)
+
     odds, probs = extract_odds_and_probabilities(betting_info)
+    games  = get_games(betting_info)
+    
     enum_odds = []
     enum_probs = []
+    
     for i, key in enumerate(odds.keys()):
         for i in odds[key]:
             enum_odds.append(i)
@@ -187,21 +134,47 @@ def main():
     for i, key in enumerate(probs.keys()):
         for i in probs[key]:
             enum_probs.append(i)
-        
-        
-        
     
-    odds_filename = "odds.bin"
-    probs_filename = "probs.bin"
+    assert (len(enum_odds) == len(enum_probs))    
+    
+    
+    #Where to store data
+    data_dir = "data"
+    cwd = os.listdir()
+    if data_dir not in cwd:
+        os.mkdir(data_dir)
+    data_dir += '/'
 
+    #n_games = number of odds / 3 - since odds for home win, draw and away win. 
+    num_games = int(len(enum_probs) / 3) 
+    odds_filename           = data_dir + "odds.bin"
+    probs_filename          = data_dir + "probs.bin"
+    num_games_filename      = data_dir + "num_games.bin"
+    total_turnover_filename = data_dir + "total_turnover.bin"
+    teams_in_game_filename  = data_dir + "teams_in_game.bin" 
+    #odds
     with open(odds_filename, 'wb') as f:
         array('d', enum_odds).tofile(f)
         
-
+    #probs
     with open(probs_filename, 'wb') as f:
         array('d', enum_probs).tofile(f)
 
-    print(len(enum_odds))
+    #turnover
+    with open(total_turnover_filename, 'wb') as f:
+        f.write(struct.pack("i", total_turnover))
     
+    #num games
+    with open(num_games_filename, 'wb') as f:
+        f.write(struct.pack("i", num_games))
+    
+    #games
+    with open(teams_in_game_filename, "wb") as f:
+        f.write(struct.pack("I", len(games)))  
+        for s in games:
+            encoded_s = s.encode("utf-8") 
+            f.write(struct.pack("I", len(encoded_s))) 
+            f.write(encoded_s)
+
 if __name__ == "__main__":
     main()

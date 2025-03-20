@@ -56,7 +56,7 @@ int main(int argc, char const *argv[])
     int bytesRead = fread(&sample_space[0], sizeof(int), sample_space_size * num_games, file_sample_space);
     
     if(bytesRead != (sample_space_size*num_games)){
-        perror("Error reading\n");
+        perror("Error reading possible bets\n");
         return 1;
     }
     if (fclose(file_sample_space) != 0){
@@ -69,8 +69,9 @@ int main(int argc, char const *argv[])
 
     // Read probs
     probs_t probs[num_games];
-    FILE * file_probs = fopen("probs.bin", "rb");
+    FILE * file_probs = fopen("data/probs.bin", "rb");
     num_obj_read = fread(probs, sizeof(probs_t), num_games, file_probs);
+    
     fclose(file_probs);
     if (num_obj_read != num_games){
         printf("Something went wrong reading probs.\n");
@@ -88,12 +89,7 @@ int main(int argc, char const *argv[])
         compute_likliehood(&x[0], &ps_arg[0], num_games,result_likliehood);
         
         memcpy(&pobin_lut[i*num_games], result_likliehood, (num_games+1)*sizeof(double));
-        if(i==0){
-            
-            for(int j=0;j<num_games;j++){
-                printf("Game %d: %lf, index=%d\n", j+1, ps_arg[x[j] + j*3], x[j]+j*3);
-            }
-        }
+        
     }
 
    // Write resulting lookup table to file
