@@ -5,6 +5,13 @@ echo "========== Building binaries =========="
 make
 echo "Build completed."
 
+echo "========== Ensuring 'data' directory exists =========="
+if [[ ! -d "data" ]]; then
+    echo "'data' directory not found. Creating..."
+    mkdir -p data
+else
+    echo "'data' directory exists."
+fi
 echo "========== Scraping Svenska Spel data =========="
 python3 scrapeSvenskaSpel.py
 echo "Scraping completed."
