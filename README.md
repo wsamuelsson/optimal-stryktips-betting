@@ -1,4 +1,4 @@
-# Optimal betting in Stryktipset
+# Finding optimal bets in a "Stryktipset" betting pool
 
 ## Paper
 This implementation builds on the Clair, Letscher paper [1]. What is new in this implementation is the use of: 
